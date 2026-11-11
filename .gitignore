@@ -1,0 +1,47 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+out/
+.vscode/
+
+# Локальные инструкции и настройки
+/chats/
+/AGENTS.md
+/PLAN.md
+/DECISIONS.md
+.codex/
+.claude/
+.agents/
+.mcp.json
+local.properties
+
+# Локальное окружение и ключи
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# Логи, дампы и профили
+*.log
+*.hprof
+*.jfr
+
+# Python / ML
+__pycache__/
+.venv/
+*.ipynb_checkpoints
+ml/data/
+
+# OS
+.DS_Store
+Thumbs.db

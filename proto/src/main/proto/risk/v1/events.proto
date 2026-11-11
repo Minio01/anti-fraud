@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package risk.v1;
+
+import "google/protobuf/timestamp.proto";
+import "risk/v1/scoring.proto";
+import "risk/v1/transaction.proto";
+
+option java_multiple_files = true;
+option java_package = "com.antifraud.proto.v1";
+
+// Kafka-топик `transactions-scored`, ключ — user_id (SPEC.md §8.1).
+message ScoredTransaction {
+  Transaction transaction = 1;
+  ScoreResponse result = 2;
+  google.protobuf.Timestamp scored_at = 3;
+}
+
+// Kafka-топик `transactions-labels`, ключ — transaction_id.
+// Пишет только transaction-mock: это «правильный ответ» для оценки качества.
+message TransactionLabel {
+  string transaction_id = 1;
+  bool expected_fraud = 2;
+  // Имя паттерна (FraudPattern из openapi.yaml) или пусто для нормальной транзакции.
+  string pattern = 3;
+}

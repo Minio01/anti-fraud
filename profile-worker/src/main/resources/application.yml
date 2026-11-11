@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: profile-worker
+
+server:
+  port: 8084
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}

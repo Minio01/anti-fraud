@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package risk.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "com.antifraud.proto.v1";
+
+// Канал, через который совершена транзакция.
+enum Channel {
+  CHANNEL_UNSPECIFIED = 0; // proto3: нулевое значение enum обязательно и означает «не задано»
+  CHANNEL_ONLINE = 1;
+  CHANNEL_POS = 2;
+  CHANNEL_ATM = 3;
+}
+
+// Финансовая транзакция. Поля и правила валидации: SPEC.md, раздел 4.
+message Transaction {
+  // TODO(you): опиши поля транзакции по таблице из SPEC.md §4.
+  //
+  // Подсказки:
+  // - Формат поля: `<тип> <имя> = <номер>;`, имена в snake_case, номера с 1.
+  //   Номера — это «адрес» поля в бинарном формате: после релиза их нельзя менять.
+  // - UUID, IP, коды валют и стран — это `string`.
+  // - Деньги: `int64 amount_minor` (центы), не double.
+  // - Время: `google.protobuf.Timestamp` (импорт уже есть выше).
+  // - Координаты необязательны: используй ключевое слово `optional double`,
+  //   чтобы отличать «не передано» от 0.0.
+  // - Для канала используй enum `Channel` выше.
+  //
+  // После этого запусти `./gradlew :proto:build` и посмотри сгенерированный код
+  // в proto/build/generated/sources/proto/main/ (java, kotlin, grpc, grpckt).
+}

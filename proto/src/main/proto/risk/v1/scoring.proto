@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package risk.v1;
+
+import "risk/v1/transaction.proto";
+
+option java_multiple_files = true;
+option java_package = "com.antifraud.proto.v1";
+
+// Online-скоринг транзакции. Требования: SPEC.md, раздел 5.1.
+service RiskScoringService {
+  // Ошибки:
+  //   INVALID_ARGUMENT  — невалидная транзакция (детали в google.rpc.BadRequest)
+  //   DEADLINE_EXCEEDED — не уложились в дедлайн клиента
+  rpc Score(ScoreRequest) returns (ScoreResponse);
+}
+
+message ScoreRequest {
+  Transaction transaction = 1;
+}
+
+enum Decision {
+  DECISION_UNSPECIFIED = 0;
+  DECISION_ALLOW = 1;
+  DECISION_FLAG = 2;
+  DECISION_BLOCK = 3;
+}
+
+message ScoreResponse {
+  string transaction_id = 1;
+  Decision decision = 2;
+  // Итоговая оценка риска от 0 до 1 (SPEC.md §7.3).
+  double risk_score = 3;
+  // Сработавшие правила и признаки, например "R1_VELOCITY_1M".
+  repeated string reasons = 4;
+  // true, если скоринг шёл без Redis-фич облегчённой моделью (SPEC.md SC-8).
+  bool degraded = 5;
+  string model_version = 6;
+  // Время обработки внутри сервиса, микросекунды.
+  int64 processing_time_us = 7;
+  // true, если ответ взят из кэша идемпотентности (повторный transaction_id).
+  bool replayed = 8;
+}

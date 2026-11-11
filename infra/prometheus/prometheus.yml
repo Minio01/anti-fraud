@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Сервисы запускаются на хосте (./gradlew bootRun), поэтому адрес host.docker.internal
+  - job_name: scoring-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8090"]
+
+  # TODO(you): добавь jobs для остальных сервисов по примеру scoring-service.
+  # Порты: SPEC.md §3 (transaction-mock, live-monitor, persistence-worker, profile-worker).

@@ -1,0 +1,527 @@
+openapi: 3.1.0
+info:
+  title: Anti-Fraud & Risk Engine — REST API
+  version: 1.0.0
+  description: |
+    REST-ручки сервисов проекта. Основной путь скоринга идёт по gRPC и описан
+    в `proto/src/main/proto/risk/v1/scoring.proto`, здесь его нет.
+
+    Каждый сервис — отдельный server (порт). Аутентификации нет (учебный проект, см. SPEC.md §2).
+
+    **WebSocket** `ws://localhost:8082/ws/monitor` OpenAPI не описывает. Протокол:
+    - сервер → клиент: `MonitorState` (JSON) сразу при подключении, затем не чаще 10 раз/с;
+      медленный клиент получает только последнее состояние (conflation);
+    - клиент → сервер: `MonitorSubscribe` (JSON) — фильтр списка событий.
+    Схемы обоих сообщений лежат в `components.schemas`.
+
+    У всех сервисов также есть `/actuator/health` и `/actuator/prometheus` (Spring Boot Actuator).
+
+servers:
+  - url: http://localhost:8081
+    description: transaction-mock
+  - url: http://localhost:8082
+    description: live-monitor
+  - url: http://localhost:8083
+    description: persistence-worker
+
+tags:
+  - name: mock-stream
+    description: Постоянный поток транзакций (transaction-mock, :8081)
+  - name: mock-scenarios
+    description: Запуск фрод-паттернов (transaction-mock, :8081)
+  - name: mock-dataset
+    description: Экспорт датасета для обучения (transaction-mock, :8081)
+  - name: monitor
+    description: Снимок состояния Live Monitor (live-monitor, :8082)
+  - name: audit
+    description: История решений (persistence-worker, :8083)
+  - name: quality
+    description: Качество обнаружения по меткам мока (persistence-worker, :8083)
+
+paths:
+  # ---------------- transaction-mock :8081 ----------------
+  /api/v1/mock/stream:
+    servers: [{ url: http://localhost:8081 }]
+    get:
+      tags: [mock-stream]
+      operationId: getStream
+      summary: Текущее состояние потока
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamStatus" }
+    put:
+      tags: [mock-stream]
+      operationId: configureStream
+      summary: Запустить поток или изменить его параметры
+      description: Идемпотентно. Если поток уже идёт, меняет RPS и долю фрода на лету.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StreamConfig" }
+      responses:
+        "200":
+          description: Поток запущен или перенастроен
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StreamStatus" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    delete:
+      tags: [mock-stream]
+      operationId: stopStream
+      summary: Остановить поток
+      responses:
+        "204": { description: Поток остановлен (или уже был остановлен) }
+
+  /api/v1/mock/scenarios:
+    servers: [{ url: http://localhost:8081 }]
+    get:
+      tags: [mock-scenarios]
+      operationId: listScenarios
+      summary: Список доступных фрод-паттернов
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ScenarioInfo" }
+
+  /api/v1/mock/scenarios/{pattern}/runs:
+    servers: [{ url: http://localhost:8081 }]
+    post:
+      tags: [mock-scenarios]
+      operationId: runScenario
+      summary: Запустить фрод-паттерн
+      description: |
+        Асинхронный запуск: ответ приходит сразу, транзакции отправляются в Scoring
+        в течение `durationMs` паттерна. Результат смотреть в Live Monitor или в
+        `GET /api/v1/mock/scenarios/{pattern}/runs/{runId}`.
+      parameters:
+        - $ref: "#/components/parameters/Pattern"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScenarioRunRequest" }
+      responses:
+        "202":
+          description: Сценарий запущен
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioRun" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/mock/scenarios/{pattern}/runs/{runId}:
+    servers: [{ url: http://localhost:8081 }]
+    get:
+      tags: [mock-scenarios]
+      operationId: getScenarioRun
+      summary: Статус и результат запуска сценария
+      parameters:
+        - $ref: "#/components/parameters/Pattern"
+        - name: runId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScenarioRun" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/mock/datasets:
+    servers: [{ url: http://localhost:8081 }]
+    post:
+      tags: [mock-dataset]
+      operationId: exportDataset
+      summary: Сгенерировать датасет для обучения моделей
+      description: |
+        Генерирует транзакции с фичами и метками без вызова Scoring (SPEC TM-7).
+        Возвращает CSV потоком. Колонки: все фичи SPEC §6 + `expected_fraud` + `pattern`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DatasetRequest" }
+      responses:
+        "200":
+          description: CSV-файл
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  # ---------------- live-monitor :8082 ----------------
+  /api/v1/monitor/state:
+    servers: [{ url: http://localhost:8082 }]
+    get:
+      tags: [monitor]
+      operationId: getMonitorState
+      summary: Текущий снимок состояния (то же, что приходит по WebSocket)
+      parameters:
+        - name: decisions
+          in: query
+          description: Фильтр списка событий по решению
+          schema:
+            type: array
+            items: { $ref: "#/components/schemas/Decision" }
+          style: form
+          explode: false
+        - name: userId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MonitorState" }
+
+  # ---------------- persistence-worker :8083 ----------------
+  /api/v1/transactions/{transactionId}:
+    servers: [{ url: http://localhost:8083 }]
+    get:
+      tags: [audit]
+      operationId: getTransaction
+      summary: Запись аудита по id транзакции
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditRecord" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/transactions:
+    servers: [{ url: http://localhost:8083 }]
+    get:
+      tags: [audit]
+      operationId: searchTransactions
+      summary: Поиск по аудиту
+      description: |
+        Keyset-пагинация по `(created_at, transaction_id)`, по убыванию.
+        Если не указан `from`, ищется за последние 24 часа, чтобы запрос
+        затрагивал только нужные партиции.
+      parameters:
+        - name: userId
+          in: query
+          schema: { type: string }
+        - name: decision
+          in: query
+          schema: { $ref: "#/components/schemas/Decision" }
+        - name: degraded
+          in: query
+          schema: { type: boolean }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - name: cursor
+          in: query
+          description: Значение `nextCursor` из предыдущего ответа
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/v1/quality:
+    servers: [{ url: http://localhost:8083 }]
+    get:
+      tags: [quality]
+      operationId: getQuality
+      summary: Precision, recall и F1 по меткам мока
+      description: |
+        Сравнивает решения из `transaction_audit` с метками из `transaction_label`.
+        Положительным считается решение `FLAG` или `BLOCK` (параметр `positive`).
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: positive
+          in: query
+          description: Какие решения считаются срабатыванием
+          schema:
+            type: string
+            enum: [FLAG_OR_BLOCK, BLOCK_ONLY]
+            default: FLAG_OR_BLOCK
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QualityReport" }
+
+components:
+  parameters:
+    Pattern:
+      name: pattern
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/FraudPattern" }
+
+  responses:
+    BadRequest:
+      description: Невалидный запрос
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: Не найдено
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Decision:
+      type: string
+      enum: [ALLOW, FLAG, BLOCK]
+
+    FraudPattern:
+      type: string
+      enum: [VELOCITY_BURST, ACCOUNT_TAKEOVER, CARD_TESTING, AMOUNT_ANOMALY, IMPOSSIBLE_TRAVEL]
+
+    Problem:
+      description: RFC 9457 Problem Details
+      type: object
+      required: [title, status]
+      properties:
+        type: { type: string, format: uri, default: "about:blank" }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    StreamConfig:
+      type: object
+      required: [rps]
+      properties:
+        rps:
+          type: integer
+          minimum: 1
+          maximum: 20000
+          description: Транзакций в секунду
+        fraudRate:
+          type: number
+          minimum: 0
+          maximum: 0.5
+          default: 0.015
+          description: Доля фродовых транзакций
+        patterns:
+          type: array
+          description: Какие паттерны подмешивать. По умолчанию все.
+          items: { $ref: "#/components/schemas/FraudPattern" }
+
+    StreamStatus:
+      type: object
+      required: [running, sent, errors]
+      properties:
+        running: { type: boolean }
+        config: { $ref: "#/components/schemas/StreamConfig" }
+        startedAt: { type: string, format: date-time }
+        sent: { type: integer, format: int64, description: Отправлено транзакций с момента старта }
+        errors: { type: integer, format: int64, description: Ошибки gRPC-вызовов }
+        actualRps: { type: number }
+
+    ScenarioInfo:
+      type: object
+      required: [pattern, description, transactions, durationMs]
+      properties:
+        pattern: { $ref: "#/components/schemas/FraudPattern" }
+        description: { type: string }
+        transactions: { type: integer, description: Сколько транзакций генерирует паттерн }
+        durationMs: { type: integer, description: За какое время }
+
+    ScenarioRunRequest:
+      type: object
+      properties:
+        userId:
+          type: string
+          description: Пользователь-жертва. Если не указан, выбирается случайный из пула.
+
+    ScenarioRun:
+      type: object
+      required: [runId, pattern, userId, status]
+      properties:
+        runId: { type: string, format: uuid }
+        pattern: { $ref: "#/components/schemas/FraudPattern" }
+        userId: { type: string }
+        status:
+          type: string
+          enum: [RUNNING, COMPLETED, FAILED]
+        transactions:
+          type: array
+          description: Отправленные транзакции и полученные решения
+          items:
+            type: object
+            required: [transactionId, expectedFraud]
+            properties:
+              transactionId: { type: string, format: uuid }
+              expectedFraud: { type: boolean }
+              decision: { $ref: "#/components/schemas/Decision" }
+              riskScore: { type: number }
+              reasons:
+                type: array
+                items: { type: string }
+
+    DatasetRequest:
+      type: object
+      required: [size]
+      properties:
+        size: { type: integer, minimum: 1000, maximum: 5000000 }
+        fraudRate: { type: number, minimum: 0, maximum: 0.5, default: 0.015 }
+        seed: { type: integer, format: int64, description: Для воспроизводимости }
+
+    MonitorEvent:
+      type: object
+      required: [transactionId, userId, decision, riskScore, timestamp]
+      properties:
+        transactionId: { type: string, format: uuid }
+        userId: { type: string }
+        amountMinor: { type: integer, format: int64 }
+        currency: { type: string }
+        country: { type: string }
+        decision: { $ref: "#/components/schemas/Decision" }
+        riskScore: { type: number }
+        reasons:
+          type: array
+          items: { type: string }
+        degraded: { type: boolean }
+        timestamp: { type: string, format: date-time }
+
+    MonitorState:
+      type: object
+      description: Снимок состояния. Это же сообщение сервер шлёт по WebSocket.
+      required: [version, generatedAt, counters, rps, degradedRate, latencyP99Ms, recentEvents]
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: Монотонно растёт. Клиент по пропускам видит, что сработал conflation.
+        generatedAt: { type: string, format: date-time }
+        counters:
+          type: object
+          required: [ALLOW, FLAG, BLOCK]
+          properties:
+            ALLOW: { type: integer, format: int64 }
+            FLAG: { type: integer, format: int64 }
+            BLOCK: { type: integer, format: int64 }
+        rps: { type: number, description: За последние 10 секунд }
+        degradedRate: { type: number }
+        latencyP99Ms: { type: number }
+        recentEvents:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/MonitorEvent" }
+
+    MonitorSubscribe:
+      type: object
+      description: Сообщение клиент → сервер по WebSocket.
+      required: [type]
+      properties:
+        type:
+          type: string
+          const: subscribe
+        decisions:
+          type: array
+          items: { $ref: "#/components/schemas/Decision" }
+        userId: { type: string }
+
+    AuditRecord:
+      type: object
+      required: [transactionId, createdAt, userId, amountMinor, currency, decision, riskScore, reasons, degraded, modelVersion, processingUs]
+      properties:
+        transactionId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        userId: { type: string }
+        amountMinor: { type: integer, format: int64 }
+        currency: { type: string }
+        merchantId: { type: string }
+        country: { type: string }
+        decision: { $ref: "#/components/schemas/Decision" }
+        riskScore: { type: number }
+        reasons:
+          type: array
+          items: { type: string }
+        degraded: { type: boolean }
+        modelVersion: { type: string }
+        processingUs: { type: integer }
+        label:
+          description: Метка мока, если уже получена
+          type: object
+          properties:
+            expectedFraud: { type: boolean }
+            pattern: { $ref: "#/components/schemas/FraudPattern" }
+
+    AuditPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AuditRecord" }
+        nextCursor:
+          type: string
+          description: Отсутствует, если это последняя страница
+
+    QualityMetrics:
+      type: object
+      required: [truePositive, falsePositive, falseNegative, trueNegative, precision, recall, f1]
+      properties:
+        truePositive: { type: integer, format: int64 }
+        falsePositive: { type: integer, format: int64 }
+        falseNegative: { type: integer, format: int64 }
+        trueNegative: { type: integer, format: int64 }
+        precision: { type: number }
+        recall: { type: number }
+        f1: { type: number }
+
+    QualityReport:
+      type: object
+      required: [overall, byPattern, degraded, labeledTransactions]
+      properties:
+        labeledTransactions: { type: integer, format: int64 }
+        overall: { $ref: "#/components/schemas/QualityMetrics" }
+        degraded:
+          description: Только транзакции, оценённые в degraded-режиме
+          $ref: "#/components/schemas/QualityMetrics"
+        byPattern:
+          type: object
+          description: Recall по каждому паттерну (precision по паттерну не определён)
+          additionalProperties:
+            type: object
+            properties:
+              total: { type: integer, format: int64 }
+              detected: { type: integer, format: int64 }
+              recall: { type: number }
