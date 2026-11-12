@@ -13,10 +13,8 @@ create() {
 }
 
 create transactions-scored 6
-
-# TODO(you): создай остальные топики из SPEC.md §8.1 по примеру выше:
-#   transactions-scored.retry, transactions-scored.dlq, transactions-labels.
-# Вопрос на подумать: почему у retry-топика столько же партиций, сколько у основного,
-# а DLQ хватает одной?
+create transactions-scored.retry 6
+create transactions-scored.dlq 1
+create transactions-labels 3
 
 $TOPICS --bootstrap-server "$BOOTSTRAP" --list

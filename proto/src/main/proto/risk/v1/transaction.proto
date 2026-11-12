@@ -17,18 +17,19 @@ enum Channel {
 
 // Финансовая транзакция. Поля и правила валидации: SPEC.md, раздел 4.
 message Transaction {
-  // TODO(you): опиши поля транзакции по таблице из SPEC.md §4.
-  //
-  // Подсказки:
-  // - Формат поля: `<тип> <имя> = <номер>;`, имена в snake_case, номера с 1.
-  //   Номера — это «адрес» поля в бинарном формате: после релиза их нельзя менять.
-  // - UUID, IP, коды валют и стран — это `string`.
-  // - Деньги: `int64 amount_minor` (центы), не double.
-  // - Время: `google.protobuf.Timestamp` (импорт уже есть выше).
-  // - Координаты необязательны: используй ключевое слово `optional double`,
-  //   чтобы отличать «не передано» от 0.0.
-  // - Для канала используй enum `Channel` выше.
-  //
-  // После этого запусти `./gradlew :proto:build` и посмотри сгенерированный код
-  // в proto/build/generated/sources/proto/main/ (java, kotlin, grpc, grpckt).
+  string transaction_id = 1;
+  string user_id = 2;
+  int64 amount_minor = 3;
+  string currency = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  string merchant_id = 6;
+  string merchant_category = 7;
+  string device_id = 8;
+  string ip = 9;
+  string country = 10;
+  optional double latitude = 11;
+  optional double longitude = 12;
+  Channel channel = 13;
+  //`./gradlew :proto:build`
+  // сгенерированный код в proto/build/generated/sources/proto/main/ (java, kotlin, grpc, grpckt).
 }
