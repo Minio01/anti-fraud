@@ -17,6 +17,7 @@ protobuf-gradle-plugin = { module = "com.google.protobuf:protobuf-gradle-plugin"
 
 # --- protobuf / gRPC (версии берутся из BOM Spring Boot) ---
 protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin" }
+protobuf-java-util = { module = "com.google.protobuf:protobuf-java-util" }
 grpc-protobuf = { module = "io.grpc:grpc-protobuf" }
 grpc-stub = { module = "io.grpc:grpc-stub" }
 grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub" }

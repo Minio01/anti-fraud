@@ -26,13 +26,23 @@ enum Decision {
   DECISION_BLOCK = 3;
 }
 
+// Сработавшие правила скоринга (SPEC.md §7.1).
+enum Reason {
+  REASON_UNSPECIFIED = 0;
+  REASON_R1_VELOCITY_1M = 1;
+  REASON_R2_ACCOUNT_TAKEOVER = 2;
+  REASON_R3_CARD_TESTING = 3;
+  REASON_R4_AMOUNT_ANOMALY = 4;
+  REASON_R5_IMPOSSIBLE_TRAVEL = 5;
+  REASON_R6_AMOUNT_LIMIT = 6;
+}
+
 message ScoreResponse {
   string transaction_id = 1;
   Decision decision = 2;
   // Итоговая оценка риска от 0 до 1 (SPEC.md §7.3).
   double risk_score = 3;
-  // Сработавшие правила и признаки, например "R1_VELOCITY_1M".
-  repeated string reasons = 4;
+  repeated Reason reasons = 4;
   // true, если скоринг шёл без Redis-фич облегчённой моделью (SPEC.md SC-8).
   bool degraded = 5;
   string model_version = 6;

@@ -8,6 +8,9 @@ spring:
 server:
   port: 8090
 
+# TODO(you): задай scoring.amount-rule.threshold-minor в центах USD (SC-1, SPEC.md §7.1, R6).
+# Проверь решение для суммы на один цент ниже порога и ровно на пороге.
+
 management:
   endpoints:
     web:

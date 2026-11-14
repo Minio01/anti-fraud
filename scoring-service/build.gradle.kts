@@ -5,5 +5,6 @@ plugins {
 
 dependencies {
     implementation(project(":proto"))
+    implementation(libs.protobuf.java.util)
     implementation(libs.spring.boot.starter.grpc.server)
 }
