@@ -13,6 +13,7 @@ dependencyResolutionManagement {
 
 include(
     "proto",
+    "features-core",
     "scoring-service",
     "transaction-mock",
     "live-monitor",
