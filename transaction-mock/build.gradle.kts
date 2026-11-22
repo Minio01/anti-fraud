@@ -5,5 +5,6 @@ plugins {
 
 dependencies {
     implementation(project(":proto"))
+    implementation(project(":features-core"))
     implementation(libs.spring.boot.starter.grpc.client)
 }

@@ -18,7 +18,7 @@ data class ScheduledTransaction(
     val offset: Duration,
     val transaction: Transaction,
     val expectedFraud: Boolean,
-    val pattern: FraudPattern,
+    val pattern: FraudPattern?,
 )
 
 interface PatternGenerator {
