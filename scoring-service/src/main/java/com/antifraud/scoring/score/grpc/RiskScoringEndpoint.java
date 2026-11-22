@@ -6,11 +6,14 @@ import com.antifraud.proto.v1.RiskScoringServiceGrpc;
 import com.antifraud.proto.v1.ScoreRequest;
 import com.antifraud.proto.v1.ScoreResponse;
 import com.antifraud.scoring.score.application.AmountScorer;
+import com.antifraud.scoring.score.domain.Transaction;
+import com.antifraud.scoring.score.redis.ScoreResponseCache;
 import com.google.protobuf.Any;
 import com.google.rpc.Code;
 import com.google.rpc.Status;
 import io.grpc.protobuf.StatusProto;
 import io.grpc.stub.StreamObserver;
+import org.springframework.dao.DataAccessException;
 import org.springframework.grpc.server.service.GrpcService;
 
 import java.time.Instant;
@@ -21,9 +24,11 @@ final class RiskScoringEndpoint extends RiskScoringServiceGrpc.RiskScoringServic
     private final ScoreRequestValidator validator = new ScoreRequestValidator();
     private final TransactionMapper mapper = new TransactionMapper();
     private final AmountScorer scorer;
+    private final ScoreResponseCache cache;
 
-    RiskScoringEndpoint(AmountScorer scorer) {
+    RiskScoringEndpoint(AmountScorer scorer, ScoreResponseCache cache) {
         this.scorer = scorer;
+        this.cache = cache;
     }
 
     @Override
@@ -41,9 +46,34 @@ final class RiskScoringEndpoint extends RiskScoringServiceGrpc.RiskScoringServic
         }
 
         var transaction = mapper.toDomain(request.getTransaction());
+        observer.onNext(scoreWithReplay(transaction, request.getTransaction().getTransactionId(), startedAt));
+        observer.onCompleted();
+    }
+
+    private ScoreResponse scoreWithReplay(Transaction transaction, String originalId, long startedAt) {
+        ScoreResponse saved;
+        try {
+            saved = cache.find(transaction.id());
+        } catch (DataAccessException exception) {
+            return calculate(transaction, originalId, startedAt).toBuilder().setDegraded(true).build();
+        }
+        if (saved != null) {
+            return saved.toBuilder().setReplayed(true).build();
+        }
+
+        var calculated = calculate(transaction, originalId, startedAt);
+        try {
+            saved = cache.saveIfAbsent(transaction.id(), calculated);
+        } catch (DataAccessException exception) {
+            return calculated.toBuilder().setDegraded(true).build();
+        }
+        return saved == null ? calculated : saved.toBuilder().setReplayed(true).build();
+    }
+
+    private ScoreResponse calculate(Transaction transaction, String originalId, long startedAt) {
         var result = scorer.score(transaction);
         var response = ScoreResponse.newBuilder()
-                .setTransactionId(request.getTransaction().getTransactionId())
+                .setTransactionId(originalId)
                 .setRiskScore(result.riskScore())
                 .setModelVersion("amount-rule-v1");
         switch (result) {
@@ -52,7 +82,6 @@ final class RiskScoringEndpoint extends RiskScoringServiceGrpc.RiskScoringServic
                     .addReasons(Reason.REASON_R6_AMOUNT_LIMIT);
         }
         response.setProcessingTimeUs(TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - startedAt));
-        observer.onNext(response.build());
-        observer.onCompleted();
+        return response.build();
     }
 }

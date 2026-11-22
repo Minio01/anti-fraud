@@ -8,6 +8,7 @@ import com.antifraud.proto.v1.ScoreResponse;
 import com.antifraud.proto.v1.Transaction;
 import com.antifraud.scoring.score.application.AmountScorer;
 import com.antifraud.scoring.score.application.AmountScoringProperties;
+import com.antifraud.scoring.score.redis.ScoreResponseCache;
 import com.google.protobuf.Timestamp;
 import com.google.rpc.BadRequest;
 import io.grpc.Status;
@@ -26,7 +27,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 class RiskScoringEndpointTest {
     private static final long THRESHOLD_MINOR = 1000;
     private final RiskScoringEndpoint endpoint = new RiskScoringEndpoint(
-            new AmountScorer(new AmountScoringProperties(THRESHOLD_MINOR)));
+            new AmountScorer(new AmountScoringProperties(THRESHOLD_MINOR)), mock(ScoreResponseCache.class));
 
     @Test
     void sendsBadRequestDetailsWhenTransactionIsMissing() throws Exception {

@@ -1,0 +1,37 @@
+### Ниже порога: DECISION_ALLOW
+GRPC localhost:9090/risk.v1.RiskScoringService/Score
+
+{
+  "transaction": {
+    "transactionId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    "userId": "user-1",
+    "amountMinor": "9999",
+    "currency": "USD",
+    "timestamp": "2026-01-01T12:00:00Z",
+    "merchantId": "merchant-1",
+    "merchantCategory": "5411",
+    "deviceId": "device-1",
+    "ip": "192.0.2.1",
+    "country": "US",
+    "channel": "CHANNEL_ONLINE"
+  }
+}
+
+### На пороге: DECISION_BLOCK
+GRPC localhost:9090/risk.v1.RiskScoringService/Score
+
+{
+  "transaction": {
+    "transactionId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+    "userId": "user-1",
+    "amountMinor": "10000",
+    "currency": "USD",
+    "timestamp": "2026-01-01T12:00:00Z",
+    "merchantId": "merchant-1",
+    "merchantCategory": "5411",
+    "deviceId": "device-1",
+    "ip": "192.0.2.1",
+    "country": "US",
+    "channel": "CHANNEL_ONLINE"
+  }
+}

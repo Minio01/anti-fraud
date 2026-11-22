@@ -1,6 +1,11 @@
 spring:
   application:
     name: scoring-service
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 5ms
   grpc:
     server:
       port: 9090
@@ -8,8 +13,10 @@ spring:
 server:
   port: 8090
 
-# TODO(you): задай scoring.amount-rule.threshold-minor в центах USD (SC-1, SPEC.md §7.1, R6).
-# Проверь решение для суммы на один цент ниже порога и ровно на пороге.
+# Порог правила суммы в центах USD (SPEC.md §7.1, R6).
+scoring:
+  amount-rule:
+    threshold-minor: 10000
 
 management:
   endpoints:

@@ -20,15 +20,18 @@ protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin" }
 protobuf-java-util = { module = "com.google.protobuf:protobuf-java-util" }
 grpc-protobuf = { module = "io.grpc:grpc-protobuf" }
 grpc-stub = { module = "io.grpc:grpc-stub" }
+grpc-inprocess = { module = "io.grpc:grpc-inprocess" }
 grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub" }
 
 # --- Spring Boot starters (версии из BOM) ---
 spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-grpc-server = { module = "org.springframework.boot:spring-boot-starter-grpc-server" }
+spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
 spring-boot-starter-grpc-client = { module = "org.springframework.boot:spring-boot-starter-grpc-client" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 micrometer-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
+testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter" }
 
 # --- Kotlin ---
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
