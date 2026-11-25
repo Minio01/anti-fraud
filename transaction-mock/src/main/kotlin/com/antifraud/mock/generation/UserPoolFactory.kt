@@ -25,6 +25,7 @@ class UserPoolFactory(private val averageAmount: (Random) -> Long) {
                     .take(random.nextInt(1, 4))
                     .map { "$it.${random.nextInt(1, 255)}" },
                 averageAmountMinor = averageAmount(random),
+                paymentsPerDay = UserSeeds.random(runSeed, "activity:$userId").nextInt(1, 21),
             )
         }
     }

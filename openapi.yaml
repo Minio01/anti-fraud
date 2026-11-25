@@ -56,7 +56,9 @@ paths:
       tags: [mock-stream]
       operationId: configureStream
       summary: Запустить поток или изменить его параметры
-      description: Идемпотентно. Если поток уже идёт, меняет RPS и долю фрода на лету.
+      description: |
+        Идемпотентно. Если поток уже идёт, меняет RPS и настройки фрода на лету.
+        При изменении доли фрода или набора паттернов запланированные продолжения сценариев сбрасываются.
       requestBody:
         required: true
         content:
@@ -154,6 +156,9 @@ paths:
       description: |
         Генерирует транзакции с фичами и метками без вызова Scoring (SPEC TM-7).
         Возвращает CSV потоком. Колонки: все фичи SPEC §6 + `expected_fraud` + `pattern`.
+        `size` — число строк данных без заголовка. Доля фрода приблизительная:
+        продолжение многошагового сценария может оказаться за границей выборки.
+        Одинаковый seed и параметры генерации воспроизводят файл.
       requestBody:
         required: true
         content:
@@ -162,6 +167,10 @@ paths:
       responses:
         "200":
           description: CSV-файл
+          headers:
+            X-Dataset-Seed:
+              description: Seed, который использован для генерации этого файла
+              schema: { type: integer, format: int64 }
           content:
             text/csv:
               schema: { type: string }
@@ -348,19 +357,20 @@ components:
           description: Доля фродовых транзакций
         patterns:
           type: array
-          description: Какие паттерны подмешивать. По умолчанию все.
+          description: Какие паттерны подмешивать. По умолчанию все. Пустой список отключает фрод.
           items: { $ref: "#/components/schemas/FraudPattern" }
 
     StreamStatus:
       type: object
-      required: [running, sent, errors]
+      required: [running, sent, errors, dropped, actualRps]
       properties:
         running: { type: boolean }
         config: { $ref: "#/components/schemas/StreamConfig" }
         startedAt: { type: string, format: date-time }
         sent: { type: integer, format: int64, description: Отправлено транзакций с момента старта }
         errors: { type: integer, format: int64, description: Ошибки gRPC-вызовов }
-        actualRps: { type: number }
+        dropped: { type: integer, format: int64, description: Не отправлено из-за лимита одновременных запросов }
+        actualRps: { type: number, description: Средний темп отправки за текущий или последний запуск }
 
     ScenarioInfo:
       type: object

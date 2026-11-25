@@ -9,10 +9,11 @@ import kotlinx.coroutines.sync.withLock
 class CoroutineRateLimiter(
     initialRps: Int,
     burstSize: Int,
+    initialTokens: Int = burstSize,
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
     private val mutex = Mutex()
-    private val bucket = TokenBucket(initialRps, burstSize, nanoTime())
+    private val bucket = TokenBucket(initialRps, burstSize, nanoTime(), initialTokens)
 
     suspend fun awaitPermit() {
         while (true) {

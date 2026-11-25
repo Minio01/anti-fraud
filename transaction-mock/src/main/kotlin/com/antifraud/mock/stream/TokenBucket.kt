@@ -7,14 +7,16 @@ internal class TokenBucket(
     initialRps: Int,
     private val capacity: Int,
     startedAtNanos: Long,
+    initialTokens: Int = capacity,
 ) {
     private var rps = initialRps
-    private var tokens = capacity.toDouble()
+    private var tokens = initialTokens.toDouble()
     private var updatedAtNanos = startedAtNanos
 
     init {
         require(initialRps in 1..20_000)
         require(capacity > 0)
+        require(initialTokens in 0..capacity)
     }
 
     fun acquireDelayMillis(nowNanos: Long): Long {

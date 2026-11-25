@@ -16,7 +16,8 @@ class GenerationConfiguration {
     fun logNormalAmountSampler(properties: GenerationProperties) = LogNormalAmountSampler(properties.sigma)
 
     @Bean
-    fun normalTransactionGenerator(amounts: LogNormalAmountSampler) = NormalTransactionGenerator(amounts)
+    fun normalTransactionGenerator(amounts: LogNormalAmountSampler, properties: GenerationProperties) =
+        NormalTransactionGenerator(amounts, tripDuration = properties.tripDuration)
 
     @Bean
     fun accountTakeoverGenerator(properties: GenerationProperties, amounts: LogNormalAmountSampler) =

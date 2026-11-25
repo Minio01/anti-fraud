@@ -20,9 +20,12 @@ mock:
     seed: 42
     max-concurrent-scenarios: 16
     max-retained-runs: 256
+    max-stream-in-flight: 256
   generation:
     # Разброс логарифма обычной суммы: больше sigma — тяжелее хвост крупных покупок.
     sigma: 0.75
+    # Длительность легитимной поездки по часам мока.
+    trip-duration: 30m
     # Доля захватов аккаунта с последующим крупным платежом, не общая доля фрода.
     account-takeover-large-payment-probability: 0.2
 

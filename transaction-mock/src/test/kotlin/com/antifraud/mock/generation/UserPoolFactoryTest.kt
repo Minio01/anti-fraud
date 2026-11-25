@@ -26,7 +26,9 @@ class UserPoolFactoryTest {
             })
             assertTrue(user.home.country in setOf("US", "GB", "DE", "JP"))
             assertTrue(user.averageAmountMinor in 500L..20_000L)
+            assertTrue(user.paymentsPerDay in 1..20)
         }
+        assertEquals((1..20).toSet(), users.map { it.paymentsPerDay }.toSet())
     }
 
     @Test

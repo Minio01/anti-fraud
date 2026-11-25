@@ -18,11 +18,13 @@ data class UserProfile(
     val deviceIds: List<String>,
     val ips: List<String>,
     val averageAmountMinor: Long,
+    val paymentsPerDay: Int = 1,
 ) {
     init {
         require(userId.length in 1..64)
         require(deviceIds.size in 1..2 && deviceIds.all { it.length in 1..128 })
         require(ips.size in 1..3)
         require(averageAmountMinor > 0)
+        require(paymentsPerDay in 1..20)
     }
 }

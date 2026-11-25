@@ -9,9 +9,11 @@ data class MockRuntimeProperties(
     val seed: Long = 42,
     val maxConcurrentScenarios: Int = 16,
     val maxRetainedRuns: Int = 256,
+    val maxStreamInFlight: Int = 256,
 ) {
     init {
         require(userPoolSize > 0 && meanAmountMinor > 0)
         require(maxConcurrentScenarios > 0 && maxRetainedRuns >= maxConcurrentScenarios)
+        require(maxStreamInFlight > 0)
     }
 }

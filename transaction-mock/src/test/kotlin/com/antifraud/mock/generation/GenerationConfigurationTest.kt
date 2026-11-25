@@ -7,6 +7,7 @@ import org.springframework.boot.env.YamlPropertySourceLoader
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.core.io.ClassPathResource
 import java.time.Instant
+import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -28,6 +29,7 @@ class GenerationConfigurationTest {
             val properties = context.getBean(GenerationProperties::class.java)
             assertEquals(0.75, properties.sigma)
             assertEquals(0.2, properties.accountTakeoverLargePaymentProbability)
+            assertEquals(Duration.ofMinutes(30), properties.tripDuration)
             assertEquals(FraudPattern.entries.toSet(), context.getBeansOfType(PatternGenerator::class.java).values.map { it.pattern }.toSet())
             assertNotNull(context.getBean(NormalTransactionGenerator::class.java))
         }
