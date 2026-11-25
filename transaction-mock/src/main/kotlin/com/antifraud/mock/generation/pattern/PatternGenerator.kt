@@ -23,6 +23,7 @@ data class ScheduledTransaction(
 
 interface PatternGenerator {
     val pattern: FraudPattern
+    val metadata: PatternMetadata
 
     // Время и Random передаёт вызывающий код: генерация не зависит от настенных часов.
     fun generate(user: UserProfile, random: Random, startedAt: Instant): List<ScheduledTransaction>

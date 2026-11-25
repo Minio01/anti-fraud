@@ -30,6 +30,9 @@ class ScenarioService(
     private val lock = Any()
     private val runs = linkedMapOf<UUID, ScenarioRun>()
     private var closed = false
+    //private val patterns = FraudPattern
+
+    //fun listOfScenario() {}
 
     fun start(pattern: FraudPattern, request: ScenarioRunRequest = ScenarioRunRequest()): ScenarioRun {
         if (request.userId != null && (request.userId.isBlank() || request.userId.length > 64)) {

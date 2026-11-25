@@ -14,10 +14,8 @@ import java.util.UUID
 @RestController
 @RequestMapping("/api/v1/mock/scenarios")
 class ScenarioController(private val catalog: ScenarioCatalog, private val scenarios: ScenarioService) {
-    // TODO(you): 2.4 — добавь GET для списка сценариев (SPEC.md TM-3, openapi.yaml listScenarios).
-    // Метод без аргументов возвращает List<ScenarioInfo> из catalog.list().
-    // Для пути самого контроллера нужна аннотация @GetMapping без дополнительного пути.
-    fun listScenarios(): List<ScenarioInfo> = TODO("2.4: REST-список сценариев")
+    @GetMapping()
+    fun listScenarios(): List<ScenarioInfo> = catalog.list()
 
     @PostMapping("/{pattern}/runs")
     @ResponseStatus(HttpStatus.ACCEPTED)

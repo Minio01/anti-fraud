@@ -5,6 +5,7 @@ import com.antifraud.mock.generation.LogNormalAmountSampler
 import com.antifraud.mock.generation.pattern.AccountTakeoverGenerator
 import com.antifraud.mock.generation.pattern.AmountAnomalyGenerator
 import com.antifraud.mock.generation.pattern.CardTestingGenerator
+import com.antifraud.mock.generation.pattern.FraudPattern
 import com.antifraud.mock.generation.pattern.ImpossibleTravelGenerator
 import com.antifraud.mock.generation.pattern.VelocityBurstGenerator
 import com.antifraud.mock.scoring.ScoringGateway
@@ -22,11 +23,33 @@ import org.springframework.test.web.reactive.server.WebTestClient
 import java.time.Duration
 import java.util.UUID
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScenarioControllerTest {
-    // TODO(you): 2.4 — по образцу тестов ниже добавь GET /api/v1/mock/scenarios (SPEC.md TM-3).
-    // Ожидай HTTP 200, пять элементов и наличие всех значений FraudPattern в поле pattern.
+    @Test
+    fun `get list of every type of FraudPattern with metadata`() = runTest {
+        withController { client ->
+            val response = client.get().uri("/api/v1/mock/scenarios")
+                .exchange()
+                .expectStatus().isOk
+                .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+                .expectBody()
+
+            response.jsonPath("$.length()").isEqualTo(FraudPattern.entries.size)
+
+            FraudPattern.entries.forEachIndexed { index, pattern ->
+                response
+                    .jsonPath("$[$index].pattern").isEqualTo(pattern.name)
+                    .jsonPath("$[$index].description").value<String> { assertTrue(it.isNotBlank()) }
+                    .jsonPath("$[$index].transactions").value<Number> { assertTrue(it.toInt() > 0) }
+                    .jsonPath("$[$index].durationMs").value<Number> { assertTrue(it.toLong() >= 0) }
+            }
+            val anomalyIndex = FraudPattern.entries.indexOf(FraudPattern.AMOUNT_ANOMALY)
+            response.jsonPath("$[$anomalyIndex].transactions").isEqualTo(1)
+                .jsonPath("$[$anomalyIndex].durationMs").isEqualTo(0)
+        }
+    }
 
     @Test
     fun `post returns accepted and status reports the completed scoring result`() = runTest {

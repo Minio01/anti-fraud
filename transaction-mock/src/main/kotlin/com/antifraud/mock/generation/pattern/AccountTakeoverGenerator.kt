@@ -16,6 +16,11 @@ class AccountTakeoverGenerator(
     }
 
     override val pattern = FraudPattern.ACCOUNT_TAKEOVER
+    override val metadata = PatternMetadata(
+        description = "Новое устройство/IP/страна; крупное продолжение необязательно",
+        maxTransactions = if (largePaymentProbability > 0) 2 else 1,
+        maxDuration = if (largePaymentProbability > 0) Duration.ofSeconds(MAX_FOLLOWUP_SECONDS) else Duration.ZERO,
+    )
 
     override fun generate(user: UserProfile, random: Random, startedAt: Instant): List<ScheduledTransaction> {
         val foreign = ForeignLocations.farFrom(user.home)
@@ -26,7 +31,7 @@ class AccountTakeoverGenerator(
         val offsets = buildList {
             add(Duration.ZERO)
             if (random.nextDouble() < largePaymentProbability) {
-                add(Duration.ofSeconds(random.nextLong(60, 181)))
+                add(Duration.ofSeconds(random.nextLong(MIN_FOLLOWUP_SECONDS, MAX_FOLLOWUP_SECONDS + 1)))
             }
         }
         return offsets.mapIndexed { index, offset ->
@@ -45,5 +50,10 @@ class AccountTakeoverGenerator(
                 .build()
             ScheduledTransaction(offset, transaction, expectedFraud = true, pattern = pattern)
         }
+    }
+
+    private companion object {
+        const val MIN_FOLLOWUP_SECONDS = 60L
+        const val MAX_FOLLOWUP_SECONDS = 180L
     }
 }
