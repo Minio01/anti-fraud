@@ -101,6 +101,8 @@ paths:
         Асинхронный запуск: ответ приходит сразу, транзакции отправляются в Scoring
         в течение `durationMs` паттерна. Результат смотреть в Live Monitor или в
         `GET /api/v1/mock/scenarios/{pattern}/runs/{runId}`.
+        История хранится в памяти процесса в ограниченном объёме; старые завершённые
+        запуски вытесняются. Лимит одновременных запусков задаётся конфигурацией.
       parameters:
         - $ref: "#/components/parameters/Pattern"
       requestBody:
@@ -116,6 +118,12 @@ paths:
               schema: { $ref: "#/components/schemas/ScenarioRun" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+        "429":
+          description: Достигнут лимит активных сценариев или хранимых запусков
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 
   /api/v1/mock/scenarios/{pattern}/runs/{runId}:
     servers: [{ url: http://localhost:8081 }]
@@ -360,8 +368,8 @@ components:
       properties:
         pattern: { $ref: "#/components/schemas/FraudPattern" }
         description: { type: string }
-        transactions: { type: integer, description: Сколько транзакций генерирует паттерн }
-        durationMs: { type: integer, description: За какое время }
+        transactions: { type: integer, description: Максимальное число транзакций в одном запуске паттерна }
+        durationMs: { type: integer, description: Максимальная длительность последовательности платежей }
 
     ScenarioRunRequest:
       type: object

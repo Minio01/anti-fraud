@@ -1,9 +1,30 @@
 spring:
   application:
     name: transaction-mock
+  grpc:
+    client:
+      channel:
+        scoring:
+          target: ${SCORING_GRPC_TARGET:static://localhost:9090}
+          ssl:
+            enabled: false
 
 server:
   port: 8081
+
+mock:
+  runtime:
+    # Стартовые параметры синтетического пула; seed сохраняет повторяемость профилей.
+    user-pool-size: 10000
+    mean-amount-minor: 2500
+    seed: 42
+    max-concurrent-scenarios: 16
+    max-retained-runs: 256
+  generation:
+    # Разброс логарифма обычной суммы: больше sigma — тяжелее хвост крупных покупок.
+    sigma: 0.75
+    # Доля захватов аккаунта с последующим крупным платежом, не общая доля фрода.
+    account-takeover-large-payment-probability: 0.2
 
 management:
   endpoints:
