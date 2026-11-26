@@ -1,6 +1,15 @@
 spring:
   application:
     name: transaction-mock
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      properties:
+        "[max.block.ms]": 250
+        "[request.timeout.ms]": 3000
+        "[delivery.timeout.ms]": 5000
   grpc:
     client:
       channel:

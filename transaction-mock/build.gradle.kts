@@ -5,6 +5,7 @@ plugins {
 
 dependencies {
     implementation(project(":proto"))
+    implementation(libs.spring.boot.starter.kafka)
     implementation(project(":features-core"))
     implementation(libs.spring.boot.starter.grpc.client)
     testImplementation(libs.grpc.inprocess)

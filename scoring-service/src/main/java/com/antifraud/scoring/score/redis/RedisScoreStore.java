@@ -1,5 +1,6 @@
 package com.antifraud.scoring.score.redis;
 
+import com.antifraud.features.RedisUserTag;
 import com.antifraud.proto.v1.ScoreResponse;
 import com.antifraud.scoring.score.domain.Transaction;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -77,7 +78,7 @@ public final class RedisScoreStore {
     ) {
         var deadline = new Deadline(System.nanoTime() + deadlineNs);
         return breaker.executeCompletionStage(() -> {
-            var userTag = userTag(tx);
+            var userTag = RedisUserTag.of(tx.userId().value());
             var keys = idempotencyKeys(tx.id());
             var token = UUID.randomUUID().toString();
             var featureRead = connection.commands().thenCompose(commands ->
@@ -176,15 +177,6 @@ public final class RedisScoreStore {
     private static String[] idempotencyKeys(UUID transactionId) {
         var tag = "{" + transactionId + "}";
         return new String[]{"idem:" + tag, "idem-user:" + tag, "idem-lease:" + tag};
-    }
-
-    private static String userTag(Transaction tx) {
-        var user = tx.userId().value();
-        // Сохраняем привычные имена ключей. Фигурные скобки и префикс экранирования кодируем.
-        if (user.contains("{") || user.contains("}") || user.startsWith("~")) {
-            user = "~" + Base64.getUrlEncoder().withoutPadding().encodeToString(user.getBytes(StandardCharsets.UTF_8));
-        }
-        return "{" + user + "}";
     }
 
     public static boolean isRedisUnavailable(Throwable error) {

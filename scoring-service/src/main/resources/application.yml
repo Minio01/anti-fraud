@@ -1,6 +1,15 @@
 spring:
   application:
     name: scoring-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      properties:
+        "[max.block.ms]": 1000
+        "[request.timeout.ms]": 3000
+        "[delivery.timeout.ms]": 5000
   data:
     redis:
       host: ${REDIS_HOST:localhost}

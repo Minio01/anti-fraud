@@ -1,0 +1,4 @@
+-- TODO(you) 5.1 (PW-2, PW-3, PW-8; SPEC §8.2): добавь таблицы аудита и меток.
+-- transaction_audit должна быть RANGE-партиционирована по created_at.
+-- Уникальный ключ родительской таблицы включает transaction_id и created_at.
+-- Итог проверяется задачей :persistence-worker:generateJooq: должны появиться обе таблицы jOOQ.

@@ -5,4 +5,8 @@ plugins {
 
 dependencies {
     implementation(project(":proto"))
+    implementation(project(":features-core"))
+    implementation(libs.spring.boot.starter.kafka)
+    implementation("org.springframework.boot:spring-boot-starter-data-redis-reactive")
+    testImplementation(libs.testcontainers.junit)
 }

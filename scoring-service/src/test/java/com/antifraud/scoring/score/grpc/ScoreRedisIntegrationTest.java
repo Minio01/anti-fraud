@@ -7,6 +7,7 @@ import com.antifraud.proto.v1.ScoreRequest;
 import com.antifraud.proto.v1.ScoreResponse;
 import com.antifraud.proto.v1.Transaction;
 import com.antifraud.scoring.score.redis.AsyncRedisConnection;
+import com.antifraud.scoring.score.kafka.ScoredTransactionPublisher;
 import com.antifraud.scoring.score.redis.RedisScoreStore;
 import com.antifraud.scoring.score.redis.RedisScoringProperties;
 import com.google.protobuf.util.Timestamps;
@@ -181,7 +182,8 @@ class ScoreRedisIntegrationTest {
             var scorer = TestRiskScorer.create(1000);
             var name = InProcessServerBuilder.generateName();
             server = InProcessServerBuilder.forName(name)
-                    .addService(new RiskScoringEndpoint(scorer, new RedisScoreStore(connections, settings)))
+                    .addService(new RiskScoringEndpoint(scorer, new RedisScoreStore(connections, settings),
+                            org.mockito.Mockito.mock(ScoredTransactionPublisher.class)))
                     .build().start();
             channel = InProcessChannelBuilder.forName(name).build();
         }

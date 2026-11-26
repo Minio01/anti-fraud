@@ -3,6 +3,7 @@ package com.antifraud.mock.stream
 import com.antifraud.mock.generation.NormalTransactionGenerator
 import com.antifraud.mock.scenario.ScenarioCatalog
 import com.antifraud.mock.scenario.UserDirectory
+import com.antifraud.mock.labels.TransactionLabels
 import com.antifraud.mock.scoring.ScoringGateway
 import io.grpc.StatusException
 import io.grpc.StatusRuntimeException
@@ -34,6 +35,7 @@ class StreamService(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val clock: Clock = Clock.systemUTC(),
     private val nanoTime: () -> Long = System::nanoTime,
+    private val labels: TransactionLabels = TransactionLabels {},
 ) : AutoCloseable {
     private val lifecycle = Mutex()
     private var run: Run? = null
@@ -86,6 +88,7 @@ class StreamService(
                 continue
             }
             launch {
+                labels.publish(event)
                 active.sent()
                 try {
                     scoring.score(event.transaction)

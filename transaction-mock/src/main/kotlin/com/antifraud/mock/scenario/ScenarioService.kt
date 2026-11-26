@@ -3,6 +3,7 @@ package com.antifraud.mock.scenario
 import com.antifraud.mock.generation.UserSeeds
 import com.antifraud.mock.generation.pattern.FraudPattern
 import com.antifraud.mock.generation.pattern.ScheduledTransaction
+import com.antifraud.mock.labels.TransactionLabels
 import com.antifraud.mock.scoring.ScoringGateway
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +26,7 @@ class ScenarioService(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val clock: Clock = Clock.systemUTC(),
     private val nanoTime: () -> Long = System::nanoTime,
+    private val labels: TransactionLabels = TransactionLabels {},
 ) : AutoCloseable {
     private val slots = Semaphore(properties.maxConcurrentScenarios)
     private val lock = Any()
@@ -83,6 +85,7 @@ class ScenarioService(
                 val remaining = event.offset.toNanos() - (nanoTime() - startedAtNanos)
                 if (remaining > 0) delay((remaining + 999_999) / 1_000_000)
                 pending = ScenarioTransactionResult(event.transaction.transactionId, event.expectedFraud)
+                labels.publish(event)
                 val response = scoring.score(event.transaction)
                 append(runId, pending.copy(
                     decision = response.decision.name.removePrefix("DECISION_"),

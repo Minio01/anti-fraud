@@ -7,6 +7,7 @@ import com.antifraud.proto.v1.ScoreRequest;
 import com.antifraud.proto.v1.ScoreResponse;
 import com.antifraud.proto.v1.Transaction;
 import com.antifraud.scoring.score.redis.RedisFeatureSnapshot;
+import com.antifraud.scoring.score.kafka.ScoredTransactionPublisher;
 import com.antifraud.scoring.score.redis.RedisScoreStore;
 import com.google.protobuf.Timestamp;
 import com.google.rpc.BadRequest;
@@ -33,7 +34,7 @@ import static org.mockito.Mockito.when;
 class RiskScoringEndpointTest {
     private static final long THRESHOLD_MINOR = 1000;
     private final RiskScoringEndpoint endpoint = new RiskScoringEndpoint(
-            TestRiskScorer.create(THRESHOLD_MINOR), makeStore());
+            TestRiskScorer.create(THRESHOLD_MINOR), makeStore(), mock(ScoredTransactionPublisher.class));
 
     private static RedisScoreStore makeStore() {
         var store = mock(RedisScoreStore.class);

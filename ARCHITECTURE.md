@@ -113,14 +113,15 @@ anti-fraud/
 
 ## 7. Хранилища и контракты
 
-**Kafka-топики:** `transactions-scored`, `transactions-scored.retry`, `transactions-scored.dlq`, `transactions-labels` (метки мока для оценки качества). Ключ сообщения — `user_id`, чтобы сохранить порядок событий одного пользователя.
+**Kafka-топики:** события скоринга идут в transactions-scored с ключом user_id, чтобы сохранить порядок для пользователя. Метки мока идут в transactions-labels с ключом transaction_id. Оба сообщения используют Protobuf из events.proto. Для ошибок записи в PostgreSQL предусмотрены transactions-scored.retry и transactions-scored.dlq.
 
 **Redis-ключи** (hash tag `{userId}` держит все ключи пользователя в одном слоте Redis Cluster, иначе Lua-скрипт не сможет работать с ними вместе. ID со скобками или начальным `~` кодируются в Base64URL с префиксом `~`):
 - `win:{userId}` — ZSET, score = timestamp, member = `txId:amountMinor`
 - `small:{userId}` — ZSET мелких транзакций (score = timestamp, member = `txId:merchantId`) для card testing
 - `last:{userId}` — Hash: гео и время последней транзакции (обновляется в Lua, нужен для impossible travel)
-- `prof:{userId}` — Hash: средний чек, число транзакций, последнее гео
-- `dev:{userId}`, `ip:{userId}`, `cty:{userId}` — Set
+- `prof:{userId}` — Hash: средний чек (EMA, α = 0,1) и число транзакций, обработанных Profile Worker
+- `dev:{userId}`, `ip:{userId}`, `cty:{userId}` — Set из 20 последних уникальных значений. Списки `dev-recent:{userId}`, `ip-recent:{userId}`, `cty-recent:{userId}` хранят порядок по последнему использованию
+- `profile-seen:{userId}:txId` — дедупликация обновлений профиля, TTL 24 ч. Profile Worker обновляет профиль и маркер в одном Lua-скрипте, пропуская `BLOCK`
 - `feature-seen:{userId}:txId` — ключ дедупликации обновления окон, TTL 24 ч
 - `idem:{txId}` — сохранённый вердикт, TTL 24 ч
 - `idem-user:{txId}` связывает ID с пользователем до сохранения вердикта, TTL 24 ч. `idem-lease:{txId}` резервирует первую попытку записи на 1 с. При сохранении вердикта Lua удаляет обе записи.

@@ -3,11 +3,14 @@ package com.antifraud.scoring.score.grpc;
 import com.antifraud.proto.v1.RiskScoringServiceGrpc;
 import com.antifraud.proto.v1.ScoreRequest;
 import com.antifraud.proto.v1.ScoreResponse;
+import com.antifraud.proto.v1.ScoredTransaction;
 import com.antifraud.scoring.score.application.RiskScorer;
 import com.antifraud.scoring.score.domain.Transaction;
+import com.antifraud.scoring.score.kafka.ScoredTransactionPublisher;
 import com.antifraud.scoring.score.redis.RedisFeatureSnapshot;
 import com.antifraud.scoring.score.redis.RedisScoreStore;
 import com.google.protobuf.Any;
+import com.google.protobuf.util.Timestamps;
 import com.google.rpc.Code;
 import com.google.rpc.Status;
 import io.grpc.Context;
@@ -34,10 +37,12 @@ final class RiskScoringEndpoint extends RiskScoringServiceGrpc.RiskScoringServic
     private final TransactionMapper mapper = new TransactionMapper();
     private final RiskScorer scorer;
     private final RedisScoreStore store;
+    private final ScoredTransactionPublisher publisher;
 
-    RiskScoringEndpoint(RiskScorer scorer, RedisScoreStore store) {
+    RiskScoringEndpoint(RiskScorer scorer, RedisScoreStore store, ScoredTransactionPublisher publisher) {
         this.scorer = scorer;
         this.store = store;
+        this.publisher = publisher;
     }
 
     @Override
@@ -62,15 +67,26 @@ final class RiskScoringEndpoint extends RiskScoringServiceGrpc.RiskScoringServic
                         ? calculate(transaction, originalId, startedAt, Optional.empty())
                         : CompletableFuture.failedFuture(error))
                 .whenCompleteAsync((response, error) -> {
-                    if (context.isCancelled()) {
-                        return;
-                    }
                     if (error != null) {
-                        observer.onError(grpcError(error));
+                        if (!context.isCancelled()) {
+                            observer.onError(grpcError(error));
+                        }
                         return;
                     }
-                    observer.onNext(response);
-                    observer.onCompleted();
+                    try {
+                        if (!context.isCancelled()) {
+                            observer.onNext(response);
+                            observer.onCompleted();
+                        }
+                    } finally {
+                        if (!response.getReplayed()) {
+                            publisher.offer(ScoredTransaction.newBuilder()
+                                    .setTransaction(request.getTransaction())
+                                    .setResult(response)
+                                    .setScoredAt(Timestamps.fromMillis(System.currentTimeMillis()))
+                                    .build());
+                        }
+                    }
                 }, context.fixedContextExecutor(ForkJoinPool.commonPool()));
     }
 
