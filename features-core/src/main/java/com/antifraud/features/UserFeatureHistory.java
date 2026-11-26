@@ -1,7 +1,6 @@
 package com.antifraud.features;
 
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -67,10 +66,11 @@ public final class UserFeatureHistory {
         }
 
         // Окна включают текущий платёж, а признаки профиля описывают историю до него.
+        var request = RequestFeatures.from(payment.amountMinor(), payment.currency(), Instant.ofEpochMilli(now),
+                payment.merchantCategory(), payment.channel(), payment.country());
         var features = new Features(
-                payment.amountMinor(), Math.log1p(payment.amountMinor()), payment.currency(),
-                Instant.ofEpochMilli(now).atOffset(ZoneOffset.UTC).getHour(), payment.merchantCategory(),
-                payment.channel(), payment.country(), minute.size(), fiveMinutes.size(), hour.size(),
+                request.amount(), request.logAmount(), request.currency(), request.hourOfDay(), request.merchantCategory(),
+                request.channel(), request.country(), minute.size(), fiveMinutes.size(), hour.size(),
                 sumFiveMinutes, small.size(), smallMerchants.size(), speed(last, payment),
                 profileCount == 0 ? 1.0 : payment.amountMinor() / averageMinor, profileCount,
                 !devices.contains(payment.deviceId()), !ips.contains(payment.ip()), !countries.contains(payment.country())

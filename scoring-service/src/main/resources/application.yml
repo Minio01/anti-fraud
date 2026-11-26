@@ -13,13 +13,37 @@ spring:
 server:
   port: 8090
 
-# Порог правила суммы в центах USD (SPEC.md §7.1, R6).
 scoring:
   redis:
     deadline: 5ms
     open-duration: 1s
+  rules:
+    velocity:
+      min-count: 8
+      weight: 0.5
+    account-takeover:
+      min-ratio: 3
+      weight: 0.6
+    card-testing:
+      min-count: 5
+      min-merchants: 3
+      weight: 0.5
+    amount-anomaly:
+      min-ratio: 10
+      weight: 0.4
+    impossible-travel:
+      min-speed-kmh: 900
+      weight: 0.7
   amount-rule:
-    threshold-minor: 10000
+    # R6: 10 000 USD в центах.
+    threshold-minor: 1000000
+  decision:
+    ml-weight: 0.90
+    flag-threshold: 0.50
+    block-threshold: 0.85
+  ml:
+    threads: 2
+    queue-capacity: 64
 
 management:
   endpoints:

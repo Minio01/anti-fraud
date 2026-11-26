@@ -1,12 +1,11 @@
 package com.antifraud.scoring.score.grpc;
 
-import com.antifraud.proto.v1.Decision;
-import com.antifraud.proto.v1.Reason;
 import com.antifraud.proto.v1.RiskScoringServiceGrpc;
 import com.antifraud.proto.v1.ScoreRequest;
 import com.antifraud.proto.v1.ScoreResponse;
-import com.antifraud.scoring.score.application.AmountScorer;
+import com.antifraud.scoring.score.application.RiskScorer;
 import com.antifraud.scoring.score.domain.Transaction;
+import com.antifraud.scoring.score.redis.RedisFeatureSnapshot;
 import com.antifraud.scoring.score.redis.RedisScoreStore;
 import com.google.protobuf.Any;
 import com.google.rpc.Code;
@@ -19,7 +18,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.grpc.server.service.GrpcService;
 
 import java.time.Instant;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 @GrpcService
@@ -28,10 +32,10 @@ final class RiskScoringEndpoint extends RiskScoringServiceGrpc.RiskScoringServic
 
     private final ScoreRequestValidator validator = new ScoreRequestValidator();
     private final TransactionMapper mapper = new TransactionMapper();
-    private final AmountScorer scorer;
+    private final RiskScorer scorer;
     private final RedisScoreStore store;
 
-    RiskScoringEndpoint(AmountScorer scorer, RedisScoreStore store) {
+    RiskScoringEndpoint(RiskScorer scorer, RedisScoreStore store) {
         this.scorer = scorer;
         this.store = store;
     }
@@ -53,34 +57,45 @@ final class RiskScoringEndpoint extends RiskScoringServiceGrpc.RiskScoringServic
         var transaction = mapper.toDomain(request.getTransaction());
         var originalId = request.getTransaction().getTransactionId();
         var context = Context.current();
-        store.score(transaction, features -> calculate(transaction, originalId, startedAt, features.isEmpty()))
+        store.score(transaction, history -> calculate(transaction, originalId, startedAt, history))
+                .exceptionallyCompose(error -> RedisScoreStore.isRedisUnavailable(error)
+                        ? calculate(transaction, originalId, startedAt, Optional.empty())
+                        : CompletableFuture.failedFuture(error))
                 .whenCompleteAsync((response, error) -> {
                     if (context.isCancelled()) {
                         return;
                     }
-                    if (error != null && !RedisScoreStore.isRedisUnavailable(error)) {
-                        LOGGER.error("Ошибка скоринга", error);
-                        observer.onError(io.grpc.Status.INTERNAL.asRuntimeException());
+                    if (error != null) {
+                        observer.onError(grpcError(error));
                         return;
                     }
-                    observer.onNext(error == null ? response : calculate(transaction, originalId, startedAt, true));
+                    observer.onNext(response);
                     observer.onCompleted();
                 }, context.fixedContextExecutor(ForkJoinPool.commonPool()));
     }
 
-    private ScoreResponse calculate(Transaction transaction, String originalId, long startedAt, boolean degraded) {
-        var result = scorer.score(transaction);
-        var response = ScoreResponse.newBuilder()
+    private CompletionStage<ScoreResponse> calculate(
+            Transaction transaction, String originalId, long startedAt, Optional<RedisFeatureSnapshot> history
+    ) {
+        return scorer.score(transaction, history).thenApply(result -> ScoreResponse.newBuilder()
                 .setTransactionId(originalId)
+                .setDecision(result.decision())
                 .setRiskScore(result.riskScore())
-                .setModelVersion("amount-rule-v1")
-                .setDegraded(degraded);
-        switch (result) {
-            case ALLOWED -> response.setDecision(Decision.DECISION_ALLOW);
-            case AMOUNT_LIMIT_EXCEEDED -> response.setDecision(Decision.DECISION_BLOCK)
-                    .addReasons(Reason.REASON_R6_AMOUNT_LIMIT);
+                .addAllReasons(result.reasons())
+                .setModelVersion(result.modelVersion())
+                .setDegraded(result.degraded())
+                .setProcessingTimeUs(TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - startedAt))
+                .build());
+    }
+
+    private static Throwable grpcError(Throwable error) {
+        while (error instanceof CompletionException && error.getCause() != null) {
+            error = error.getCause();
         }
-        response.setProcessingTimeUs(TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - startedAt));
-        return response.build();
+        if (error instanceof RejectedExecutionException) {
+            return io.grpc.Status.RESOURCE_EXHAUSTED.withDescription("Очередь инференса заполнена").asRuntimeException();
+        }
+        LOGGER.error("Ошибка скоринга", error);
+        return io.grpc.Status.INTERNAL.asRuntimeException();
     }
 }

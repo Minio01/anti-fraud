@@ -26,6 +26,7 @@ import java.util.Currency;
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -155,6 +156,43 @@ class FeatureStoreScriptIntegrationTest {
         }
     }
 
+    @Test
+    void returnsTheCalculatedResponseEvenWhenItsRedisWriteFinishesAfterTheDeadline() throws Exception {
+        var properties = new DataRedisProperties();
+        properties.setHost(REDIS.getHost());
+        properties.setPort(REDIS.getMappedPort(6379));
+        var settings = new RedisScoringProperties(Duration.ofMillis(150), Duration.ofSeconds(1));
+        try (var connection = new AsyncRedisConnection(properties)) {
+            var store = new RedisScoreStore(connection, settings);
+            connection.commands().thenCompose(commands -> commands.ping()).toCompletableFuture().get(2, TimeUnit.SECONDS);
+            var tx = new Transaction(UUID.randomUUID(), new UserId(UUID.randomUUID().toString()),
+                    new Money(100, Currency.getInstance("USD")), Instant.ofEpochMilli(NOW), "shop", "5411",
+                    "device", "192.0.2.1", "US", OptionalDouble.empty(), OptionalDouble.empty(), Transaction.Channel.ONLINE);
+            var original = ScoreResponse.newBuilder().setTransactionId(tx.id().toString()).setRiskScore(0.9)
+                    .setModelVersion("test-full").build();
+            var first = store.score(tx, snapshot -> {
+                assertThat(snapshot).isPresent();
+                return CompletableFuture.supplyAsync(() -> {
+                    try {
+                        var pause = REDIS.execInContainer("redis-cli", "CLIENT", "PAUSE", "500", "WRITE");
+                        assertThat(pause.getStdout().strip()).isEqualTo("OK");
+                        return original;
+                    } catch (IOException | InterruptedException error) {
+                        throw new AssertionError(error);
+                    }
+                }, CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS));
+            }).toCompletableFuture().get(3, TimeUnit.SECONDS);
+            assertThat(first).isEqualTo(original);
+
+            var key = "idem:{" + tx.id() + "}";
+            assertThat(await(redis.set("test:flush-pause", "1"))).isEqualTo("OK");
+            assertThat(await(redis.get(key))).isNotNull();
+            var replay = store.score(tx, ignored -> CompletableFuture.failedFuture(new AssertionError("Пересчёт повтора")))
+                    .toCompletableFuture().get(2, TimeUnit.SECONDS);
+            assertThat(replay).isEqualTo(original.toBuilder().setReplayed(true).build());
+        }
+    }
+
     private static void compareWithOffline(RedisScoreStore store, UserFeatureHistory offline, UserId user, long time,
                                            long amount, String merchant, double latitude) throws Exception {
         var tx = new Transaction(UUID.randomUUID(), user, new Money(amount, Currency.getInstance("USD")),
@@ -171,7 +209,8 @@ class FeatureStoreScriptIntegrationTest {
             assertThat(actual.smallTxCount10m()).isEqualTo(expected.smallTxCount10m());
             assertThat(actual.smallTxDistinctMerchants10m()).isEqualTo(expected.smallTxDistinctMerchants10m());
             assertThat(actual.travelSpeedKmh()).isCloseTo(expected.travelSpeedKmh(), within(0.000001));
-            return ScoreResponse.newBuilder().setTransactionId(tx.id().toString()).build();
+            return CompletableFuture.completedFuture(
+                    ScoreResponse.newBuilder().setTransactionId(tx.id().toString()).build());
         }).toCompletableFuture().get(5, TimeUnit.SECONDS);
     }
 

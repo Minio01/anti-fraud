@@ -6,8 +6,6 @@ import com.antifraud.proto.v1.RiskScoringServiceGrpc;
 import com.antifraud.proto.v1.ScoreRequest;
 import com.antifraud.proto.v1.ScoreResponse;
 import com.antifraud.proto.v1.Transaction;
-import com.antifraud.scoring.score.application.AmountScorer;
-import com.antifraud.scoring.score.application.AmountScoringProperties;
 import com.antifraud.scoring.score.redis.AsyncRedisConnection;
 import com.antifraud.scoring.score.redis.RedisScoreStore;
 import com.antifraud.scoring.score.redis.RedisScoringProperties;
@@ -120,6 +118,7 @@ class ScoreRedisIntegrationTest {
                 assertThat(response.getDegraded()).isTrue();
                 assertThat(response.getDecision()).isEqualTo(Decision.DECISION_BLOCK);
                 assertThat(response.getReplayed()).isFalse();
+                assertThat(response.getModelVersion()).isEqualTo("test-light");
             }
 
             assertThat(redis("PING")).isEqualTo("PONG");
@@ -179,7 +178,7 @@ class ScoreRedisIntegrationTest {
             connections = new AsyncRedisConnection(redis);
 
             var settings = new RedisScoringProperties(redisDeadline, Duration.ofMillis(200));
-            var scorer = new AmountScorer(new AmountScoringProperties(1000));
+            var scorer = TestRiskScorer.create(1000);
             var name = InProcessServerBuilder.generateName();
             server = InProcessServerBuilder.forName(name)
                     .addService(new RiskScoringEndpoint(scorer, new RedisScoreStore(connections, settings)))

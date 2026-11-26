@@ -35,6 +35,7 @@ enum Reason {
   REASON_R4_AMOUNT_ANOMALY = 4;
   REASON_R5_IMPOSSIBLE_TRAVEL = 5;
   REASON_R6_AMOUNT_LIMIT = 6;
+  REASON_ML_HIGH_RISK = 7;
 }
 
 message ScoreResponse {
@@ -43,7 +44,7 @@ message ScoreResponse {
   // Итоговая оценка риска от 0 до 1 (SPEC.md §7.3).
   double risk_score = 3;
   repeated Reason reasons = 4;
-  // true, если скоринг шёл без Redis-фич облегчённой моделью (SPEC.md SC-8).
+  // true, если недоступны признаки Redis или произошла ошибка инференса.
   bool degraded = 5;
   string model_version = 6;
   // Время обработки внутри сервиса, микросекунды.

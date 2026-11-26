@@ -6,8 +6,6 @@ import com.antifraud.proto.v1.Reason;
 import com.antifraud.proto.v1.ScoreRequest;
 import com.antifraud.proto.v1.ScoreResponse;
 import com.antifraud.proto.v1.Transaction;
-import com.antifraud.scoring.score.application.AmountScorer;
-import com.antifraud.scoring.score.application.AmountScoringProperties;
 import com.antifraud.scoring.score.redis.RedisFeatureSnapshot;
 import com.antifraud.scoring.score.redis.RedisScoreStore;
 import com.google.protobuf.Timestamp;
@@ -21,7 +19,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,13 +33,13 @@ import static org.mockito.Mockito.when;
 class RiskScoringEndpointTest {
     private static final long THRESHOLD_MINOR = 1000;
     private final RiskScoringEndpoint endpoint = new RiskScoringEndpoint(
-            new AmountScorer(new AmountScoringProperties(THRESHOLD_MINOR)), makeStore());
+            TestRiskScorer.create(THRESHOLD_MINOR), makeStore());
 
     private static RedisScoreStore makeStore() {
         var store = mock(RedisScoreStore.class);
         when(store.score(any(), any())).thenAnswer(invocation -> {
-            Function<Optional<RedisFeatureSnapshot>, ScoreResponse> calculate = invocation.getArgument(1);
-            return CompletableFuture.completedFuture(calculate.apply(Optional.of(mock(RedisFeatureSnapshot.class))));
+            Function<Optional<RedisFeatureSnapshot>, CompletionStage<ScoreResponse>> calculate = invocation.getArgument(1);
+            return calculate.apply(Optional.of(mock(RedisFeatureSnapshot.class)));
         });
         return store;
     }
@@ -97,7 +95,7 @@ class RiskScoringEndpointTest {
         assertThat(response.getTransactionId()).isEqualTo(transaction.getTransactionId());
         assertThat(response.getDecision()).isEqualTo(decision);
         assertThat(response.getRiskScore()).isEqualTo(riskScore);
-        assertThat(response.getModelVersion()).isEqualTo("amount-rule-v1");
+        assertThat(response.getModelVersion()).isEqualTo("test-full");
         assertThat(response.getProcessingTimeUs()).isNotNegative();
         assertThat(response.getDegraded()).isFalse();
         assertThat(response.getReplayed()).isFalse();

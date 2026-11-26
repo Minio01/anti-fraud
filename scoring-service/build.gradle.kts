@@ -10,6 +10,7 @@ dependencies {
     implementation(libs.spring.boot.starter.grpc.server)
     implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.resilience4j.circuitbreaker)
+    implementation(libs.onnxruntime)
     testImplementation(libs.grpc.inprocess)
     testImplementation(libs.testcontainers.junit)
 }

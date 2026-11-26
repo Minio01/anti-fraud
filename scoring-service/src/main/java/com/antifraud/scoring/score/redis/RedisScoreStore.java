@@ -73,34 +73,54 @@ public final class RedisScoreStore {
     }
 
     public CompletionStage<ScoreResponse> score(
-            Transaction tx, Function<Optional<RedisFeatureSnapshot>, ScoreResponse> calculate
+            Transaction tx, Function<Optional<RedisFeatureSnapshot>, CompletionStage<ScoreResponse>> calculate
     ) {
         var deadline = new Deadline(System.nanoTime() + deadlineNs);
         return breaker.executeCompletionStage(() -> {
             var userTag = userTag(tx);
             var keys = idempotencyKeys(tx.id());
             var token = UUID.randomUUID().toString();
-            var result = connection.commands().thenCompose(commands ->
-                    reserve(commands, tx, userTag, keys, token, deadline, calculate));
-            return result.thenApply(response -> {
-                deadline.check();
-                return response;
-            }).toCompletableFuture().orTimeout(deadline.remainingNs(), TimeUnit.NANOSECONDS);
+            var featureRead = connection.commands().thenCompose(commands ->
+                    reserve(commands, tx, userTag, keys, token, deadline));
+            return withinDeadline(featureRead, deadline).thenCompose(reservation -> switch (reservation) {
+                case Replayed cached -> CompletableFuture.completedFuture(cached.response());
+                case Reserved fresh -> {
+                    deadline.check();
+                    var remaining = deadline.remainingNs();
+                    // Очередь и инференс не расходуют остаток бюджета Redis.
+                    yield calculate.apply(fresh.snapshot()).thenCompose(response -> {
+                        var saveDeadline = new Deadline(System.nanoTime() + remaining);
+                        return withinDeadline(complete(fresh.commands(), keys, token, response), saveDeadline)
+                                .exceptionallyCompose(error -> CompletableFuture.failedFuture(isRedisUnavailable(error)
+                                        ? new CacheWriteFailure(response, unwrap(error)) : error));
+                    });
+                }
+            });
+        }).exceptionallyCompose(error -> {
+            if (unwrap(error) instanceof CacheWriteFailure failure) {
+                // Команда записи ещё может завершиться. Клиент и кэш должны получить один вердикт.
+                return CompletableFuture.completedFuture(failure.response);
+            }
+            return CompletableFuture.failedFuture(error);
         });
     }
 
-    private CompletionStage<ScoreResponse> reserve(
+    private static <T> CompletableFuture<T> withinDeadline(CompletionStage<T> operation, Deadline deadline) {
+        return operation.toCompletableFuture().orTimeout(deadline.remainingNs(), TimeUnit.NANOSECONDS);
+    }
+
+    private CompletionStage<Reservation> reserve(
             RedisAsyncCommands<String, String> commands, Transaction tx, String userTag, String[] keys,
-            String token, Deadline deadline, Function<Optional<RedisFeatureSnapshot>, ScoreResponse> calculate
+            String token, Deadline deadline
     ) {
         deadline.check();
         return commands.<List<String>>eval(RESERVE, ScriptOutputType.MULTI, keys, userTag, token)
                 .thenCompose(result -> switch (result.getFirst()) {
-                    case "replayed" -> CompletableFuture.completedFuture(replayed(result.get(1)));
+                    case "replayed" -> CompletableFuture.completedFuture(new Replayed(replayed(result.get(1))));
                     case "reserved" -> updateFeatures(commands, tx, userTag, deadline)
-                            .thenCompose(snapshot -> complete(commands, keys, token, calculate.apply(snapshot), deadline));
+                            .thenApply(snapshot -> new Reserved(commands, snapshot));
                     case "pending" -> CompletableFuture.completedFuture(null)
-                            .thenComposeAsync(ignored -> reserve(commands, tx, userTag, keys, token, deadline, calculate),
+                            .thenComposeAsync(ignored -> reserve(commands, tx, userTag, keys, token, deadline),
                                     CompletableFuture.delayedExecutor(1, TimeUnit.MILLISECONDS));
                     default -> CompletableFuture.failedFuture(new IllegalStateException("Неизвестный статус Redis"));
                 });
@@ -133,9 +153,8 @@ public final class RedisScoreStore {
 
     private CompletionStage<ScoreResponse> complete(
             RedisAsyncCommands<String, String> commands, String[] keys, String token,
-            ScoreResponse response, Deadline deadline
+            ScoreResponse response
     ) {
-        deadline.check();
         var payload = Base64.getEncoder().encodeToString(response.toByteArray());
         return commands.<String>eval(COMPLETE, ScriptOutputType.VALUE, keys, token, payload)
                 .thenApply(existing -> {
@@ -173,6 +192,7 @@ public final class RedisScoreStore {
             case RedisException ignored -> true;
             case TimeoutException ignored -> true;
             case CallNotPermittedException ignored -> true;
+            case CacheWriteFailure ignored -> true;
             default -> false;
         };
     }
@@ -202,6 +222,22 @@ public final class RedisScoreStore {
             throw new IllegalStateException("SHA-1 недоступен", exception);
         }
     }
+
+    private static final class CacheWriteFailure extends RuntimeException {
+        private final ScoreResponse response;
+
+        private CacheWriteFailure(ScoreResponse response, Throwable cause) {
+            super(cause);
+            this.response = response;
+        }
+    }
+
+    private sealed interface Reservation permits Replayed, Reserved {}
+
+    private record Replayed(ScoreResponse response) implements Reservation {}
+
+    private record Reserved(RedisAsyncCommands<String, String> commands, Optional<RedisFeatureSnapshot> snapshot)
+            implements Reservation {}
 
     private record Deadline(long expiresAt) {
         private long remainingNs() {
