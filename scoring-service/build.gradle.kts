@@ -5,9 +5,11 @@ plugins {
 
 dependencies {
     implementation(project(":proto"))
+    implementation(project(":features-core"))
     implementation(libs.protobuf.java.util)
     implementation(libs.spring.boot.starter.grpc.server)
     implementation(libs.spring.boot.starter.data.redis)
+    implementation(libs.resilience4j.circuitbreaker)
     testImplementation(libs.grpc.inprocess)
     testImplementation(libs.testcontainers.junit)
 }

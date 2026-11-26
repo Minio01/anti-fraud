@@ -15,6 +15,9 @@ server:
 
 # Порог правила суммы в центах USD (SPEC.md §7.1, R6).
 scoring:
+  redis:
+    deadline: 5ms
+    open-duration: 1s
   amount-rule:
     threshold-minor: 10000
 

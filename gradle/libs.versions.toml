@@ -7,6 +7,7 @@ protobuf = "4.35.1"
 grpc = "1.83.1"
 grpcKotlin = "1.5.0"
 onnxruntime = "1.30.0"
+resilience4j = "2.3.0"
 
 [libraries]
 # --- плагины для buildSrc ---
@@ -32,6 +33,7 @@ spring-boot-starter-grpc-client = { module = "org.springframework.boot:spring-bo
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 micrometer-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
 testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+resilience4j-circuitbreaker = { module = "io.github.resilience4j:resilience4j-circuitbreaker", version.ref = "resilience4j" }
 
 # --- Kotlin ---
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }

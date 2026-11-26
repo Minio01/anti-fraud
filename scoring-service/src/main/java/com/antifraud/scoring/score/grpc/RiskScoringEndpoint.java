@@ -7,28 +7,33 @@ import com.antifraud.proto.v1.ScoreRequest;
 import com.antifraud.proto.v1.ScoreResponse;
 import com.antifraud.scoring.score.application.AmountScorer;
 import com.antifraud.scoring.score.domain.Transaction;
-import com.antifraud.scoring.score.redis.ScoreResponseCache;
+import com.antifraud.scoring.score.redis.RedisScoreStore;
 import com.google.protobuf.Any;
 import com.google.rpc.Code;
 import com.google.rpc.Status;
+import io.grpc.Context;
 import io.grpc.protobuf.StatusProto;
 import io.grpc.stub.StreamObserver;
-import org.springframework.dao.DataAccessException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.grpc.server.service.GrpcService;
 
 import java.time.Instant;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 
 @GrpcService
 final class RiskScoringEndpoint extends RiskScoringServiceGrpc.RiskScoringServiceImplBase {
+    private static final Logger LOGGER = LoggerFactory.getLogger(RiskScoringEndpoint.class);
+
     private final ScoreRequestValidator validator = new ScoreRequestValidator();
     private final TransactionMapper mapper = new TransactionMapper();
     private final AmountScorer scorer;
-    private final ScoreResponseCache cache;
+    private final RedisScoreStore store;
 
-    RiskScoringEndpoint(AmountScorer scorer, ScoreResponseCache cache) {
+    RiskScoringEndpoint(AmountScorer scorer, RedisScoreStore store) {
         this.scorer = scorer;
-        this.cache = cache;
+        this.store = store;
     }
 
     @Override
@@ -46,36 +51,30 @@ final class RiskScoringEndpoint extends RiskScoringServiceGrpc.RiskScoringServic
         }
 
         var transaction = mapper.toDomain(request.getTransaction());
-        observer.onNext(scoreWithReplay(transaction, request.getTransaction().getTransactionId(), startedAt));
-        observer.onCompleted();
+        var originalId = request.getTransaction().getTransactionId();
+        var context = Context.current();
+        store.score(transaction, features -> calculate(transaction, originalId, startedAt, features.isEmpty()))
+                .whenCompleteAsync((response, error) -> {
+                    if (context.isCancelled()) {
+                        return;
+                    }
+                    if (error != null && !RedisScoreStore.isRedisUnavailable(error)) {
+                        LOGGER.error("Ошибка скоринга", error);
+                        observer.onError(io.grpc.Status.INTERNAL.asRuntimeException());
+                        return;
+                    }
+                    observer.onNext(error == null ? response : calculate(transaction, originalId, startedAt, true));
+                    observer.onCompleted();
+                }, context.fixedContextExecutor(ForkJoinPool.commonPool()));
     }
 
-    private ScoreResponse scoreWithReplay(Transaction transaction, String originalId, long startedAt) {
-        ScoreResponse saved;
-        try {
-            saved = cache.find(transaction.id());
-        } catch (DataAccessException exception) {
-            return calculate(transaction, originalId, startedAt).toBuilder().setDegraded(true).build();
-        }
-        if (saved != null) {
-            return saved.toBuilder().setReplayed(true).build();
-        }
-
-        var calculated = calculate(transaction, originalId, startedAt);
-        try {
-            saved = cache.saveIfAbsent(transaction.id(), calculated);
-        } catch (DataAccessException exception) {
-            return calculated.toBuilder().setDegraded(true).build();
-        }
-        return saved == null ? calculated : saved.toBuilder().setReplayed(true).build();
-    }
-
-    private ScoreResponse calculate(Transaction transaction, String originalId, long startedAt) {
+    private ScoreResponse calculate(Transaction transaction, String originalId, long startedAt, boolean degraded) {
         var result = scorer.score(transaction);
         var response = ScoreResponse.newBuilder()
                 .setTransactionId(originalId)
                 .setRiskScore(result.riskScore())
-                .setModelVersion("amount-rule-v1");
+                .setModelVersion("amount-rule-v1")
+                .setDegraded(degraded);
         switch (result) {
             case ALLOWED -> response.setDecision(Decision.DECISION_ALLOW);
             case AMOUNT_LIMIT_EXCEEDED -> response.setDecision(Decision.DECISION_BLOCK)

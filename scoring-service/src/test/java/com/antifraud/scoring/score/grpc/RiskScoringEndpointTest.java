@@ -8,7 +8,8 @@ import com.antifraud.proto.v1.ScoreResponse;
 import com.antifraud.proto.v1.Transaction;
 import com.antifraud.scoring.score.application.AmountScorer;
 import com.antifraud.scoring.score.application.AmountScoringProperties;
-import com.antifraud.scoring.score.redis.ScoreResponseCache;
+import com.antifraud.scoring.score.redis.RedisFeatureSnapshot;
+import com.antifraud.scoring.score.redis.RedisScoreStore;
 import com.google.protobuf.Timestamp;
 import com.google.rpc.BadRequest;
 import io.grpc.Status;
@@ -19,15 +20,31 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 class RiskScoringEndpointTest {
     private static final long THRESHOLD_MINOR = 1000;
     private final RiskScoringEndpoint endpoint = new RiskScoringEndpoint(
-            new AmountScorer(new AmountScoringProperties(THRESHOLD_MINOR)), mock(ScoreResponseCache.class));
+            new AmountScorer(new AmountScoringProperties(THRESHOLD_MINOR)), makeStore());
+
+    private static RedisScoreStore makeStore() {
+        var store = mock(RedisScoreStore.class);
+        when(store.score(any(), any())).thenAnswer(invocation -> {
+            Function<Optional<RedisFeatureSnapshot>, ScoreResponse> calculate = invocation.getArgument(1);
+            return CompletableFuture.completedFuture(calculate.apply(Optional.of(mock(RedisFeatureSnapshot.class))));
+        });
+        return store;
+    }
 
     @Test
     void sendsBadRequestDetailsWhenTransactionIsMissing() throws Exception {
@@ -73,8 +90,8 @@ class RiskScoringEndpointTest {
 
         endpoint.score(ScoreRequest.newBuilder().setTransaction(transaction).build(), observer);
 
-        verify(observer).onNext(sent.capture());
-        verify(observer).onCompleted();
+        verify(observer, timeout(1000)).onNext(sent.capture());
+        verify(observer, timeout(1000)).onCompleted();
         verifyNoMoreInteractions(observer);
         var response = sent.getValue();
         assertThat(response.getTransactionId()).isEqualTo(transaction.getTransactionId());
